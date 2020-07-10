@@ -1,0 +1,24 @@
+kapa1:
+  k1-t1:
+    - name: Steve Rogers
+      nicknames: ["Captain America"]
+    - name: Tony Stark
+      nicknames: ["Iron Man", "IM-Video"]
+  k1-t2:
+    - name: Thor Odinson
+      nicknames: ["Thor"]
+    - name: Hank Pym
+      nicknames: ["Ant Man"]
+    - name: Bruce Banner
+      nicknames: ["Hulk"]
+kapa2:
+  k2-t1:
+    - name: T'Challa
+      nicknames: ["Black Panther"]
+    - name: Samuel Wilson
+      nicknames: ["Falcon"]
+  k2-t2:
+    - name: Thanos
+      nicknames: ["Thanos"]
+    - name: Peter Parker
+      nicknames: ["Spider Man"]
