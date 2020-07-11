@@ -13,17 +13,17 @@ selenium
 pyyaml
 
 geckodriver.exe
-(Releases - https://github.com/mozilla/geckodriver/releases
-    Specific release -  https://github.com/mozilla/geckodriver/releases/download/v0.26.0/geckodriver-v0.26.0-win64.zip)
+(Releases - https://github.com/mozilla/geckodriver/releases \
+Specific release -  https://github.com/mozilla/geckodriver/releases/download/v0.26.0/geckodriver-v0.26.0-win64.zip)
 
-### 1.Configure Users Data
+### 1. Configure Users Data
 Create users.yml file, containing your users data.\
 An example can be found in tests/users.yml.\
 - name - The user's name
 - nicknames - Display names in Zoom meetings.
   The nicknames must be unique
 
-### 2.Run
+### 2. Run
 ```
 python ./msl.py
 ```

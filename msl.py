@@ -4,12 +4,18 @@ import os
 import yaml
 import traceback
 import functools
+import datetime
 
 USER_REPR_FORMAT = "{:8}{:8}{:20}{:6}{:6}"
 ZOOM_LOGIN_PAGE_URL = "https://zoom.us/signin"
 ZOOM_MEETING_URL_FORMAT = "https://zoom.us/wc/{}/start"
+REMOVE_FROM_TEXT = ["(Host)", "(Me)", "(Guest)"]
+VIDEO_ON_TEXT = "video on"
 
 # TODO: Improve code conventions (constants, nameing, docs, etc.).
+# TODO: Remove "participant-list" from participants
+# TODO: If name beta turns out OK - remove other methods.
+
 
 def bool_repr(value):
     if value is None:
@@ -18,6 +24,11 @@ def bool_repr(value):
         return "V"
     else:
         return "X"
+
+
+def error_log(message):
+    timestamp = datetime.datetime.now()
+    open("errors.txt", "a").write("{} {}".format(timestamp, message))
 
 
 class WebControl(object):
@@ -51,26 +62,39 @@ class Participant(object):
     """
 
     def __init__(self, text, is_video_on):
-        # Remove "(Host)" and "(Me)" from text as they are not interesting.
-        text = text.replace("(Host)", "").replace("(Me)", "")
+        # Remove uninteresting tokens from text, that allow splitting by "  " and getting the name.
+        for token in REMOVE_FROM_TEXT:
+            text = text.replace(token, "")
 
         self.text = text
+        self.name_beta = self.text.split("  ")[0]
         self.is_video_on = is_video_on
 
     @classmethod
     def from_text(cls, text):
-        is_video_on = "video on " in text
+        is_video_on = VIDEO_ON_TEXT in text
         return cls(text, is_video_on)
 
-    def compare_name(self, name):
+    @staticmethod
+    def s_compare_name(text, name):
         """
         Checking if the user's text starts with the words of name (like .startswith() but with words).
         compare_name(text="hello world today ...", "hello world") == True
         compare_name(text="hello world ...", "hello wor") == False
         """
         words_in_name = name.count(" ") + 1
-        name_from_text = " ".join(self.text.split(" ")[:words_in_name])
+        name_from_text = " ".join(text.split(" ")[:words_in_name])
         return name == name_from_text
+
+    @staticmethod
+    def s_compare_name_beta(name1, name2):
+        return name1 == name2
+
+    def compare_name(self, name):
+        return self.s_compare_name(self.text, name)
+
+    def compare_name_beta(self, name):
+        return self.name_beta == name
 
     def __repr__(self):
         return "Participant('{}')".format(self.text)
@@ -78,7 +102,9 @@ class Participant(object):
 
 class ParticipantList(object):
     ARIA = "aria-label=\""
-    START_MARK = "Participants ("
+    START_MARK = "participant list"
+    USERS_LINE_IDENTIFIER = "participants-item__name"
+    SKIP_CONTENTS = ["Input search keyword Find a participant", "participant list"]
 
     def __init__(self, participants):
         self.items = participants
@@ -87,7 +113,7 @@ class ParticipantList(object):
     def from_page_source(cls, page_source):
         # TODO: What happens if the page is not a zoom meeting page, or the Participants tab is not shown?
         # Get relevant line.
-        participants_line = [line for line in page_source.split("\n") if "participants-item__name" in line][0]
+        participants_line = [line for line in page_source.split("\n") if cls.USERS_LINE_IDENTIFIER in line][0]
 
         # Remove unnecessary beginning
         text = participants_line[participants_line.index(cls.START_MARK):]
@@ -102,6 +128,10 @@ class ParticipantList(object):
 
     @classmethod
     def get_all(cls, text):
+        """
+        Get all text representations of users from part of page source.
+        The text representations are in the following format: 'aria-label="<User Text>"'.
+        """
         contents = []
 
         start_content_index, content = cls.get_next(text)
@@ -111,10 +141,15 @@ class ParticipantList(object):
             text = text[start_content_index + len(content):]
             start_content_index, content = cls.get_next(text)
 
-        # Ignore first one
-        contents = contents[1:]
+        # Ignore irrelevant contents
+        relevant_contents = []
+        for content in contents:
+            for token in cls.SKIP_CONTENTS:
+                if token in content:
+                    continue
+            relevant_contents.append(content)
 
-        return contents
+        return relevant_contents
 
     @classmethod
     def get_next(cls, text):
@@ -145,15 +180,20 @@ class UsersData(object):
     @staticmethod
     def _validate_users_data(users_data):
         """
-        Check that there are no two identical nicknames in the users data.
+        Check that there are no two nicknames that might clash in the users data.
+        For example, "Itay" and "Itay Levi" Clash - If there is one participant with the name of "Itay Levi" then
+        both will think it matches them
         """
         nicknames = [user_data.nicknames for user_data in users_data]
         nicknames = functools.reduce(lambda x, y: x + y, nicknames)
 
+        # Because the check is not commutative, all names are scanned twice.
         for i in range(len(nicknames)):
-            for j in range(i + 1, len(nicknames)):
-                if nicknames[i] == nicknames[j]:
-                    raise ValueError("Found two identical nicknames - {}".format(nicknames[i]))
+            for j in range(len(nicknames)):
+                if i == j:
+                    continue
+                if Participant.s_compare_name_beta(nicknames[i], nicknames[j]):
+                    raise ValueError("Found two clashing nicknames {} and {}".format(nicknames[i], nicknames[j]))
 
     @classmethod
     def from_file(cls, file_path):
@@ -164,6 +204,9 @@ class UsersData(object):
         for group, group_data in data.items():
             for team, team_data in group_data.items():
                 for user_data in team_data:
+                    # Filter users with no names
+                    if not user_data["name"]:
+                        continue
                     users_data.append(UserData(name=user_data["name"],
                                                nicknames=user_data["nicknames"],
                                                team=team,
@@ -185,7 +228,6 @@ class UserData(object):
 class User(object):
     def __init__(self, name, nicknames, team, group, participants):
         self.name = name
-
         self.nicknames = nicknames
         self.team = team
         self.group = group
@@ -240,9 +282,9 @@ class UserList(object):
             # Get all existing participants of user
             for nickname in user_data.nicknames:
                 for participant in participant_list.items:
-                    if participant.compare_name(nickname):
+                    if participant.compare_name_beta(nickname):
                         existing_participants.append(participant)
-                        break
+                        # Don't break here - someone might have a few profiles with the same names.
 
             users.append(User.from_data(user_data, existing_participants))
 
@@ -390,75 +432,17 @@ class MSLParser(object):
             if user_input:
                 try:
                     self.execute(user_input.split())
-                except Exception as e:
+                except (Exception, SystemExit) as e:
                     if isinstance(e, KeyboardInterrupt):
-                        return
+                        print("Keyboard interrupt!")
+                        break
                     else:
                         traceback.print_exc()
 
             user_input = input("==> ")
 
 
-# Testing
-
-class WebControlStub(object):
-    def open_current(self, url):
-        pass
-
-    def open_new(self, url):
-        print("WebControlStub: Opening url {}.".format(url))
-
-    def open_zoom(self, zoom_room_number):
-        print("WebControlStub: Opening zoom room {}.".format(zoom_room_number))
-
-    def switch_tab(self, tab_index):
-        print("WebControlStub: Opening tab {}.".format(tab_index))
-
-    def reset_tab(self):
-        print("WebControlStub: resetting tab.")
-
-    def get_page_source(self):
-        return open(os.path.join("tests", "example.html")).read()
-
-
-class Tests(object):
-    @staticmethod
-    def commands_tests():
-        msl_parser = MSLParser(WebControlStub())
-        msl_parser.execute("open_new -u https://google.com".split())
-
-        msl_parser.execute("open_zoom -r 12345".split())
-
-        msl_parser.execute("load_users -f tests/users.yml".split())
-
-        msl_parser.execute("switch_tab -i 12345".split())
-
-        msl_parser.execute("reset_tab".split())
-
-        msl_parser.execute("get_status".split())
-        msl_parser.execute("get_status -t k2-t2".split())
-        msl_parser.execute("get_status -g kapa1".split())
-
-        msl_parser.execute("save_status -f tests/save_status_test.txt".split())
-
-        # Checking error - Getting status before settings users
-        MSLParser(WebControlStub()).execute("get_status".split())
-
-        msl_parser.execute("load_users -f tests/users_invalid_file.yml".split())
-
-    @staticmethod
-    def logic_test():
-        msl = MSL(WebControlStub())
-        msl.load_users(os.path.join("tests", "users.yml"))
-        user_list = msl.get_status()
-        print(user_list)
-
-
-# Main
-
 def main():
-    # Tests.commands_tests()
-
     MSLParser(WebControl()).start()
 
 
