@@ -3,9 +3,13 @@ from selenium import webdriver
 import os
 import yaml
 import traceback
+import functools
 
 USER_REPR_FORMAT = "{:8}{:8}{:20}{:6}{:6}"
+ZOOM_LOGIN_PAGE_URL = "https://zoom.us/signin"
+ZOOM_MEETING_URL_FORMAT = "https://zoom.us/wc/{}/start"
 
+# TODO: Improve code conventions (constants, nameing, docs, etc.).
 
 def bool_repr(value):
     if value is None:
@@ -20,16 +24,15 @@ class WebControl(object):
     def __init__(self):
         print("Opening driver...")
         self.driver = webdriver.Firefox()
-        self.open_current("https://zoom.us/signin")
 
-    def open_current(self, url):
-        self.driver.get(url)
+        # Open zoom login page.
+        self.driver.get(ZOOM_LOGIN_PAGE_URL)
 
     def open_new(self, url):
         self.driver.execute_script('window.open("{}","_blank");'.format(url))
 
     def open_zoom(self, zoom_room_number):
-        url = "https://zoom.us/wc/{}/start".format(zoom_room_number)
+        url = ZOOM_MEETING_URL_FORMAT.format(zoom_room_number)
         self.open_new(url)
 
     def switch_tab(self, tab_index):
@@ -42,32 +45,15 @@ class WebControl(object):
         return self.driver.page_source
 
 
-class WebControlStub(object):
-    def open_current(self, url):
-        pass
-
-    def open_new(self, url):
-        print("WebControlStub: Opening url {}.".format(url))
-
-    def open_zoom(self, zoom_room_number):
-        print("WebControlStub: Opening zoom room {}.".format(zoom_room_number))
-
-    def switch_tab(self, tab_index):
-        print("WebControlStub: Opening tab {}.".format(tab_index))
-
-    def reset_tab(self):
-        print("WebControlStub: resetting tab.")
-
-    def get_page_source(self):
-        return open(os.path.join("tests", "example.html")).read()
-
-
 class Participant(object):
     """
     Participant in a Zoom meeting.
     """
 
     def __init__(self, text, is_video_on):
+        # Remove "(Host)" and "(Me)" from text as they are not interesting.
+        text = text.replace("(Host)", "").replace("(Me)", "")
+
         self.text = text
         self.is_video_on = is_video_on
 
@@ -78,7 +64,9 @@ class Participant(object):
 
     def compare_name(self, name):
         """
-        Checking if the text starts with the words of name. (compare_name(text="hello world today ...", "hello world") == true)
+        Checking if the user's text starts with the words of name (like .startswith() but with words).
+        compare_name(text="hello world today ...", "hello world") == True
+        compare_name(text="hello world ...", "hello wor") == False
         """
         words_in_name = name.count(" ") + 1
         name_from_text = " ".join(self.text.split(" ")[:words_in_name])
@@ -143,6 +131,7 @@ class ParticipantList(object):
 class UsersData(object):
     def __init__(self, users_data):
         self.items = users_data
+        self._validate_users_data(self.items)
 
     def get_by_team(self, team):
         return [user_data for user_data in self.items if user_data.team == team]
@@ -152,6 +141,19 @@ class UsersData(object):
 
     def get_all(self):
         return list(self.items)
+
+    @staticmethod
+    def _validate_users_data(users_data):
+        """
+        Check that there are no two identical nicknames in the users data.
+        """
+        nicknames = [user_data.nicknames for user_data in users_data]
+        nicknames = functools.reduce(lambda x, y: x + y, nicknames)
+
+        for i in range(len(nicknames)):
+            for j in range(i + 1, len(nicknames)):
+                if nicknames[i] == nicknames[j]:
+                    raise ValueError("Found two identical nicknames - {}".format(nicknames[i]))
 
     @classmethod
     def from_file(cls, file_path):
@@ -173,7 +175,9 @@ class UsersData(object):
 class UserData(object):
     def __init__(self, name, nicknames, team, group):
         self.name = name
-        self.nicknames = nicknames
+
+        # Filter empty nicknames
+        self.nicknames = [nickname for nickname in nicknames if nickname]
         self.team = team
         self.group = group
 
@@ -181,6 +185,7 @@ class UserData(object):
 class User(object):
     def __init__(self, name, nicknames, team, group, participants):
         self.name = name
+
         self.nicknames = nicknames
         self.team = team
         self.group = group
@@ -381,12 +386,39 @@ class MSLParser(object):
     def start(self):
         user_input = ""
         while user_input != "exit":
+            # TODO: Maybe don't except KeyboardInterrupt?
             if user_input:
                 try:
                     self.execute(user_input.split())
-                except:
-                    pass
+                except Exception as e:
+                    if isinstance(e, KeyboardInterrupt):
+                        return
+                    else:
+                        traceback.print_exc()
+
             user_input = input("==> ")
+
+
+# Testing
+
+class WebControlStub(object):
+    def open_current(self, url):
+        pass
+
+    def open_new(self, url):
+        print("WebControlStub: Opening url {}.".format(url))
+
+    def open_zoom(self, zoom_room_number):
+        print("WebControlStub: Opening zoom room {}.".format(zoom_room_number))
+
+    def switch_tab(self, tab_index):
+        print("WebControlStub: Opening tab {}.".format(tab_index))
+
+    def reset_tab(self):
+        print("WebControlStub: resetting tab.")
+
+    def get_page_source(self):
+        return open(os.path.join("tests", "example.html")).read()
 
 
 class Tests(object):
@@ -412,6 +444,8 @@ class Tests(object):
         # Checking error - Getting status before settings users
         MSLParser(WebControlStub()).execute("get_status".split())
 
+        msl_parser.execute("load_users -f tests/users_invalid_file.yml".split())
+
     @staticmethod
     def logic_test():
         msl = MSL(WebControlStub())
@@ -420,14 +454,13 @@ class Tests(object):
         print(user_list)
 
 
+# Main
+
 def main():
+    # Tests.commands_tests()
+
     MSLParser(WebControl()).start()
 
 
 if __name__ == "__main__":
     main()
-
-"""
-TODO: when loading - check that there are no 2 identical nicknames
-TODO: Remove (Host) and (Me) 
-"""
