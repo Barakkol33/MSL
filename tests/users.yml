@@ -7,10 +7,10 @@ kapa1:
   k1-t2:
     - name: Thor Odinson
       nicknames: ["Thor"]
-    - name: Hank Pym
-      nicknames: ["Ant Man"]
     - name: Bruce Banner
       nicknames: ["Hulk"]
+    - name: Hank Pym
+      nicknames: ["Ant Man"]
 kapa2:
   k2-t1:
     - name: T'Challa

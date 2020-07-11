@@ -1,10 +1,8 @@
+import argparse
 from selenium import webdriver
 import os
 import yaml
-
-TEXT = """
-dropdown-toggle btn btn-default"><div class="more-button__img-layer"><span class="more-button__more-icon"></span></div><div class="more-button__button-label">More</div></button><ul role="menu" class="more-button__pop-menu dropdown-menu" aria-labelledby="moreButton"><li role="presentation" class=""><a aria-label="Disable video receiving" role="menuitem" tabindex="-1" href="#">Disable video receiving</a></li></ul></div></div></div><div><button class="footer__leave-btn ax-outline" type="button">Leave Meeting</button></div></footer></div><div id="wc-container-right" style="width: 400px;"><div><div><div role="presentation" class="participants-header__header"><div class="dropdown btn-group"><button aria-label="Manage Chat Panel" id="participantSectionMenu" role="button" aria-haspopup="true" aria-expanded="false" type="button" class="participants-header__participants-pop-btn ax-outline-blue-important dropdown-toggle btn btn-default"></button><ul role="menu" class="participants-header__dropdown-menu dropdown-menu" aria-labelledby="participantSectionMenu"><li role="presentation" class="participants-header__menu"><a role="menuitem" tabindex="-1" href="#"><i class="participants-header__close-icon"></i>Close</a></li><li role="presentation" class="participants-header__menu"><a role="menuitem" tabindex="-1" href="#"><i class="participants-header__pop-out-icon"></i>Pop Out</a></li></ul></div><div class="participants-header__title"><span>Participants (3)</span></div></div><div><section data-scrollbar="true" tabindex="0" class="participant-scrollbar" style="height: 629px; overflow: hidden;" role="application" aria-label="participant list"><div class="scroll-content"><div><ul class="participants-ul"><li role="application" id="participants-list-0" class="item-pos participants-li " tabindex="-1" aria-label="User1 (Me) no audio connected video off     "><div class="participants-item__item-layout"><div class="participants-item__left-section"><img class="participants-item__avatar" src="https://us04images.zoom.us/p/t928RzpISLqY2rFK3tC2uA/cdf9754e-68a7-471c-9c91-3ca4fe1242b5-3233" alt="" aria-hidden="true"><span class="participants-item__name-section"><span class="participants-item__display-name" style="max-width: 283.333px;">User1</span><span class="participants-item__name-label">(Me)</span></span></div><span class="participants-item__right-section"><div class="participants-icon__icon-box"><i class="participants-icon__participant-video--stopped participants-icon__participant-video"></i></div></span></div></li><li role="application" id="participants-list-1" class="item-pos participants-li " tabindex="-1" aria-label="Barak Kolnik (Host) computer audio muted video off     "><div class="participants-item__item-layout"><div class="participants-item__left-section"><img class="participants-item__avatar" src="https://us04images.zoom.us/p/t928RzpISLqY2rFK3tC2uA/cdf9754e-68a7-471c-9c91-3ca4fe1242b5-3233?type=large" alt="" aria-hidden="true"><span class="participants-item__name-section"><span class="participants-item__display-name" style="max-width: 248.85px;">Barak Kolnik</span><span class="participants-item__name-label">(Host)</span></span></div><span class="participants-item__right-section"><div class="participants-icon__icon-box"><i class="participants-icon__participants-unmute"></i></div><div class="participants-icon__icon-box"><i class="participants-icon__participant-video--stopped participants-icon__participant-video"></i></div></span></div></li><li role="application" id="participants-list-2" class="item-pos participants-li " tabindex="-1" aria-label="Barak Kolnik  no audio connected video off     "><div class="participants-item__item-layout"><div class="participants-item__left-section"><img class="participants-item__avatar" src="https://us04images.zoom.us/p/t928RzpISLqY2rFK3tC2uA/cdf9754e-68a7-471c-9c91-3ca4fe1242b5-3233" alt="" aria-hidden="true"><span class="participants-item__name-section"><span class="participants-item__display-name" style="max-width: 308px;">Barak Kolnik</span><span class="participants-item__name-label"></span></span></div><span class="participants-item__right-section"><div class="participants-icon__icon-box"><i class="participants-icon__participant-video--stopped participants-icon__participant-video"></i></div></span></div></li></ul></div></div><div class="scrollbar-track scrollbar-track-x" style="display: none;"><div class="scrollbar-thumb scrollbar-thumb-x" style="width: 392px; transform: translate3d(0px, 0px, 0px);"></div></div><div class="scrollbar-track scrollbar-track-y" style="display: none;"><div class="scrollbar-thumb scrollbar-thumb-y" style="height: 629px; transform: translate3d(0px, 0px, 0px);"></div></div></section></div></div><div class="participants-section-container__participants-footer"><div class="participants-section-container__participants-footer-bottom"><button type="button" class="ax-outline-blue-important btn btn-sm btn-default">Invite</button><button type="button" class="btn btn-sm btn-default">Raise hand</button><button type="button" class="ax-outline-blue-important btn btn-sm btn-default">Reclaim Host</button></div></div></div></div></div></div></div></div></div>
-"""
+import traceback
 
 USER_REPR_FORMAT = "{:8}{:8}{:20}{:6}{:6}"
 
@@ -20,6 +18,7 @@ def bool_repr(value):
 
 class WebControl(object):
     def __init__(self):
+        print("Opening driver...")
         self.driver = webdriver.Firefox()
         self.open_current("https://zoom.us/signin")
 
@@ -48,16 +47,16 @@ class WebControlStub(object):
         pass
 
     def open_new(self, url):
-        pass
+        print("WebControlStub: Opening url {}.".format(url))
 
     def open_zoom(self, zoom_room_number):
-        pass
+        print("WebControlStub: Opening zoom room {}.".format(zoom_room_number))
 
     def switch_tab(self, tab_index):
-        pass
+        print("WebControlStub: Opening tab {}.".format(tab_index))
 
     def reset_tab(self):
-        pass
+        print("WebControlStub: resetting tab.")
 
     def get_page_source(self):
         return open(os.path.join("tests", "example.html")).read()
@@ -98,6 +97,7 @@ class ParticipantList(object):
 
     @classmethod
     def from_page_source(cls, page_source):
+        # TODO: What happens if the page is not a zoom meeting page, or the Participants tab is not shown?
         # Get relevant line.
         participants_line = [line for line in page_source.split("\n") if "participants-item__name" in line][0]
 
@@ -163,9 +163,9 @@ class UsersData(object):
             for team, team_data in group_data.items():
                 for user_data in team_data:
                     users_data.append(UserData(name=user_data["name"],
-                                            nicknames=user_data["nicknames"],
-                                            team=team,
-                                            group=group))
+                                               nicknames=user_data["nicknames"],
+                                               team=team,
+                                               group=group))
 
         return cls(users_data)
 
@@ -258,18 +258,22 @@ class MSL(object):
 
         # If default configuration exists - use it.
         if os.path.exists(self.DEFAULT_USERS_FILE_PATH):
-        	self.load_users(self.DEFAULT_USERS_FILE_PATH)
+            self.load_users(self.DEFAULT_USERS_FILE_PATH)
 
     def load_users(self, users_file_path):
+        print("Loading users file {}...".format(users_file_path))
         self.users_data = UsersData.from_file(users_file_path)
 
-    def check(self, team="", group=""):
+    def get_status(self, team="", group=""):
 
         # Get participant list
         zoom_meeting_html = self.web.get_page_source()
         participant_list = ParticipantList.from_page_source(zoom_meeting_html)
 
         # Get expected users data.
+        if not self.users_data:
+            raise RuntimeError("Users not set!")
+
         if team:
             expected_users_data = self.users_data.get_by_team(team)
         elif group:
@@ -282,36 +286,148 @@ class MSL(object):
 
         return user_list
 
+    def save_status(self, output_file_path, team="", group=""):
+        user_list = self.get_status(team=team, group=group)
+        open(output_file_path, "w").write(repr(user_list))
+
+    @staticmethod
+    def safe_invoke(func, *args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            if isinstance(e, KeyboardInterrupt):
+                return
+            else:
+                traceback.print_exc()
+
+        return None
+
+
+class MSLParser(object):
+    def __init__(self, web):
+        self.msl = MSL(web)
+
+    def open_new(self, args):
+        print("Opening url {}...".format(args.url))
+        self.msl.safe_invoke(self.msl.web.open_new, args.url)
+
+    def open_zoom(self, args):
+        self.msl.safe_invoke(self.msl.web.open_zoom, args.room)
+
+    def switch_tab(self, args):
+        self.msl.safe_invoke(self.msl.web.switch_tab, args.tab_index)
+
+    def load_users(self, args):
+        self.msl.safe_invoke(self.msl.load_users, args.file_path)
+
+    def get_status(self, args):
+        user_list = self.msl.safe_invoke(self.msl.get_status, team=args.team, group=args.group)
+        if user_list:
+            print(user_list)
+
+    def save_status(self, args):
+        self.msl.safe_invoke(self.msl.save_status, output_file_path=args.file_path, team=args.team, group=args.group)
+
+    def reset_tab(self, _):
+        self.msl.safe_invoke(self.msl.web.reset_tab)
+
+    def parse_args(self, raw_args):
+        main_parser = argparse.ArgumentParser()
+        subparsers = main_parser.add_subparsers()
+
+        url_parser = argparse.ArgumentParser(add_help=False)
+        url_parser.add_argument("-u", "--url", required=True)
+
+        index_parser = argparse.ArgumentParser(add_help=False)
+        index_parser.add_argument("-i", "--tab-index", type=int, required=True)
+
+        parser = subparsers.add_parser("open_new", parents=[url_parser])
+        parser.set_defaults(func=self.open_new)
+
+        parser = subparsers.add_parser("open_zoom")
+        parser.add_argument("-r", "--room", type=int, required=True)
+        parser.set_defaults(func=self.open_zoom)
+
+        parser = subparsers.add_parser("switch_tab", parents=[index_parser])
+        parser.set_defaults(func=self.switch_tab)
+
+        parser = subparsers.add_parser("reset_tab")
+        parser.set_defaults(func=self.reset_tab)
+
+        parser = subparsers.add_parser("load_users")
+        parser.add_argument("-f", "--file-path", required=True)
+        parser.set_defaults(func=self.load_users)
+
+        get_status_parent_parser = argparse.ArgumentParser(add_help=False)
+        get_status_parent_parser.add_argument("-t", "--team")
+        get_status_parent_parser.add_argument("-g", "--group")
+
+        parser = subparsers.add_parser("get_status", parents=[get_status_parent_parser])
+        parser.set_defaults(func=self.get_status)
+
+        parser = subparsers.add_parser("save_status", parents=[get_status_parent_parser])
+        parser.add_argument("-f", "--file-path", required=True)
+        parser.set_defaults(func=self.save_status)
+
+        args = main_parser.parse_args(args=raw_args)
+
+        return args
+
+    def execute(self, raw_args):
+        args = self.parse_args(raw_args)
+        args.func(args)
+        print("Done!")
+
     def start(self):
-        a = 3
+        user_input = ""
+        while user_input != "exit":
+            if user_input:
+                try:
+                    self.execute(user_input.split())
+                except:
+                    pass
+            user_input = input("==> ")
 
 
-def test():
-    msl = MSL(WebControlStub())
-    msl.load_users(os.path.join("tests", "users.yml"))
-    user_list = msl.check()
-    print(user_list)
+class Tests(object):
+    @staticmethod
+    def commands_tests():
+        msl_parser = MSLParser(WebControlStub())
+        msl_parser.execute("open_new -u https://google.com".split())
+
+        msl_parser.execute("open_zoom -r 12345".split())
+
+        msl_parser.execute("load_users -f tests/users.yml".split())
+
+        msl_parser.execute("switch_tab -i 12345".split())
+
+        msl_parser.execute("reset_tab".split())
+
+        msl_parser.execute("get_status".split())
+        msl_parser.execute("get_status -t k2-t2".split())
+        msl_parser.execute("get_status -g kapa1".split())
+
+        msl_parser.execute("save_status -f tests/save_status_test.txt".split())
+
+        # Checking error - Getting status before settings users
+        MSLParser(WebControlStub()).execute("get_status".split())
+
+    @staticmethod
+    def logic_test():
+        msl = MSL(WebControlStub())
+        msl.load_users(os.path.join("tests", "users.yml"))
+        user_list = msl.get_status()
+        print(user_list)
 
 
 def main():
-    test()
+    MSLParser(WebControl()).start()
 
 
 if __name__ == "__main__":
     main()
 
 """
-Start
-open_current -u <url>
-open_new -u <url>
-open_existing -u <url> -i <index>
-open_zoom -z zoom_room_number
-switch_tab <index>
-load_users <file_path>
-get_status [-t <team>] [-g <group>] [-a] -s [{names,teams,group}]
-save 
-
-
 TODO: when loading - check that there are no 2 identical nicknames
 TODO: Remove (Host) and (Me) 
 """
