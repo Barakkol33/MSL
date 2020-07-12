@@ -5,6 +5,9 @@ import msl
 
 
 class WebControlStub(object):
+    def __init__(self, source_html_file):
+        self.source_html_file = source_html_file
+
     def open_current(self, url):
         pass
 
@@ -21,7 +24,7 @@ class WebControlStub(object):
         print("WebControlStub: resetting tab.")
 
     def get_page_source(self):
-        return open(os.path.join("tests", "example.html")).read()
+        return open(self.source_html_file).read()
 
 
 class Tests(object):
@@ -35,12 +38,15 @@ class Tests(object):
 
     @classmethod
     def commands_tests(cls):
-        msl_parser = msl.MSLParser(WebControlStub())
+        def stub_web_control_factory():
+            return WebControlStub("tests/avengers.html")
+
+        msl_parser = msl.MSLParser(stub_web_control_factory)
         msl_parser.execute("open_new -u https://google.com".split())
 
         msl_parser.execute("open_zoom -r 12345".split())
 
-        msl_parser.execute("load_users -f tests/users.yml".split())
+        msl_parser.execute("load_users -f tests/avengers.yml".split())
         cls.check_throws(ValueError, msl_parser.execute, "load_users -f tests/users_invalid_file.yml".split())
         msl_parser.execute("load_users -f users.yml".split())
 
@@ -48,20 +54,18 @@ class Tests(object):
 
         msl_parser.execute("reset_tab".split())
 
-        msl_parser.execute("get_status -u tests/users.yml -m tests/example.html".split())
-        msl_parser.execute("get_status -u tests/users.yml -t A2".split())
-        msl_parser.execute("get_status -u tests/users.yml -g B".split())
-        msl_parser.execute("get_status -u tests/users.yml -o tests/avengers_test_output.txt".split())
+        msl_parser.execute("get_status -u tests/avengers.yml -m tests/avengers.html".split())
+        msl_parser.execute("get_status -u tests/avengers.yml -t A2".split())
+        msl_parser.execute("get_status -u tests/avengers.yml -g B".split())
+        msl_parser.execute("get_status -u tests/avengers.yml -o tests/avengers_test_output.txt".split())
 
         # Checking error - Getting status before settings users
-        cls.check_throws(RuntimeError, msl.MSLParser(WebControlStub()).execute, "get_status".split())
-
+        cls.check_throws(RuntimeError, msl.MSLParser(stub_web_control_factory).execute, "get_status -m tests/avengers.html".split())
 
     @staticmethod
     def try1():
-        msl_parser = msl.MSLParser(WebControlStub())
-        #msl_parser.execute("get_status -g kapa2 -u users.yml -m course2.html".split())
-
+        msl_parser = msl.MSLParser(msl.WebControl.factory)
+        msl_parser.execute("get_status -g B -u users.yml -m samples/course2.html".split())
 
     @staticmethod
     def logic_test():
@@ -72,8 +76,8 @@ class Tests(object):
 
 
 def main():
-    Tests.commands_tests()
-    #Tests.try1()
+    #Tests.commands_tests()
+    Tests.try1()
 
 
 if __name__ == "__main__":

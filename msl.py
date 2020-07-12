@@ -14,7 +14,9 @@ ZOOM_MEETING_URL_FORMAT = "https://zoom.us/wc/{}/start"
 REMOVE_FROM_TEXT = ["(Host)", "(Me)", "(Guest)"]
 VIDEO_ON_TEXT = "video on"
 
+# TODO: Make get_status() receive either WebControl or static
 # TODO: Improve code conventions (constants, nameing, docs, etc.).
+
 
 def bool_repr(value):
     if value is None:
@@ -27,10 +29,27 @@ def bool_repr(value):
 
 def error_log(message):
     timestamp = datetime.datetime.now()
-    io.open("errors.txt", "a",encoding="utf-8").write("{} {}".format(timestamp, message))
+    io.open("errors.txt", "a", encoding="utf-8").write("{} {}".format(timestamp, message))
 
 
-class WebControl(object):
+class IWebControl(object):
+    def open_new(self, url):
+        raise NotImplementedError()
+
+    def open_zoom(self, zoom_room_number):
+        raise NotImplementedError()
+
+    def switch_tab(self, tab_index):
+        raise NotImplementedError()
+
+    def reset_tab(self):
+        raise NotImplementedError()
+
+    def get_page_source(self):
+        raise NotImplementedError()
+
+
+class WebControl(IWebControl):
     def __init__(self):
         print("Opening driver...")
         self.driver = webdriver.Firefox()
@@ -54,25 +73,9 @@ class WebControl(object):
     def get_page_source(self):
         return self.driver.page_source
 
-
-class EmptyWebControl(object):
-    def open_current(self, url):
-        pass
-
-    def open_new(self, url):
-        pass
-
-    def open_zoom(self, zoom_room_number):
-        pass
-
-    def switch_tab(self, tab_index):
-        pass
-
-    def reset_tab(self):
-        pass
-
-    def get_page_source(self):
-        return ""
+    @classmethod
+    def factory(cls):
+        return cls()
 
 
 class Participant(object):
@@ -337,30 +340,30 @@ class TeamMSL(object):
     def __repr__(self):
         total_amount = len(self.users)
         team_missing = [user for user in self.users if not user.is_online]
-        output = "Team: {} | Normal: {} | Current: {} | Description: {}".format(self.team,
-                                                                                     len(self.users),
-                                                                                     total_amount - len(team_missing),
-                                                                                     ", ".join([user.name for user in team_missing]))
+        repr_format = "Team: {} | Normal: {} | Current: {} | Description: {}"
+        output = repr_format.format(self.team,
+                                    len(self.users),
+                                    total_amount - len(team_missing),
+                                    ", ".join([user.name for user in team_missing]))
         return output
 
 
 class MSLManager(object):
-    def __init__(self, web):
-        self.web = web
-
+    def __init__(self):
         self.users_data = None
 
     def load_users(self, users_file_path):
         print("Loading users file {}...".format(users_file_path))
         self.users_data = UsersData.from_file(users_file_path)
 
-    def get_status(self, team="", group="", html_file_path="", users_file_path="", use_default=True):
+    def get_status(self, team="", group="", html_source=None, users_file_path=""):
         # Get zoom meeting html.
-        # If html file was given - use it. Otherwise - get using browser.
-        if html_file_path:
-            zoom_meeting_html = io.open(html_file_path, encoding="utf-8").read()
+        # If html source is a string - it is an html file name.
+        if isinstance(html_source, str):
+            zoom_meeting_html = io.open(html_source, encoding="utf-8").read()
+        # Otherwise - source is a IWebControl. 
         else:
-            zoom_meeting_html = self.web.get_page_source()
+            zoom_meeting_html = html_source.get_page_source()
 
         # Get participant list by parsing html.
         participant_list = ParticipantList.from_page_source(zoom_meeting_html)
@@ -377,8 +380,9 @@ class MSLManager(object):
             expected_users_data = self.users_data.get_by_team(team)
             expected_teams = [team]
         elif group:
-            # group == {'A', 'B', 'C'}, team = {'A1', 'A2', 'B1', 'B2'...}
             expected_users_data = self.users_data.get_by_group(group)
+
+            # group == {'A', 'B', 'C'}, team = {'A1', 'A2', 'B1', 'B2'...}
             expected_teams = [team for team in self.users_data.teams if group == team[0]]
         else:
             expected_users_data = self.users_data.get_all()
@@ -389,45 +393,57 @@ class MSLManager(object):
                                        participant_list=participant_list,
                                        teams=expected_teams)
 
+        # Get msls from user list.
         msls = user_list.get_msls()
 
         return msls
 
-    @staticmethod
-    def safe_invoke(func, *args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            if isinstance(e, KeyboardInterrupt):
-                return
-            else:
-                traceback.print_exc()
 
-        return None
+class WebMSLManager(object):
+    def __init__(self):
+        self.web = WebControl()
+        self.msl_manager = MSLManager()
 
 
 class MSLParser(object):
-    def __init__(self, web):
-        self.msl = MSLManager(web)
+    def __init__(self, web_control_factory,):
+        self.msl_manager = MSLManager()
+        self.web_control = None
+        self.web_control_factory = web_control_factory
+
+    def get_web_control(self):
+        if not self.web_control:
+            self.web_control = self.web_control_factory()
+
+        return self.web_control
 
     def open_new(self, args):
+        self.get_web_control().open_new(args.url)
         print("Opening url {}...".format(args.url))
-        self.msl.web.open_new(args.url)
 
     def open_zoom(self, args):
-        self.msl.web.open_zoom(args.room)
+        self.get_web_control().open_zoom(args.room)
 
     def switch_tab(self, args):
-        self.msl.web.switch_tab(args.tab_index)
+        self.get_web_control().switch_tab(args.tab_index)
 
     def load_users(self, args):
-        self.msl.load_users(args.file_path)
+        self.msl_manager.load_users(args.file_path)
+
+    def reset_tab(self, _):
+        self.get_web_control().reset_tab()
 
     def get_status(self, args):
-        msls = self.msl.get_status(team=args.team,
-                                   group=args.group,
-                                   html_file_path=args.html_file_path,
-                                   users_file_path=args.users_file_path)
+        # If file given use it, otherwise use web.
+        if args.html_file_path:
+            html_source = args.html_file_path
+        else:
+            html_source = self.get_web_control()
+
+        msls = self.msl_manager.get_status(team=args.team,
+                                           group=args.group,
+                                           html_source=html_source,
+                                           users_file_path=args.users_file_path)
 
         output = "\n".join([repr(msl) for msl in msls])
 
@@ -436,9 +452,6 @@ class MSLParser(object):
             # If output file path was given - save output to it.
             if args.output_file_path:
                 io.open(args.output_file_path, "w", encoding="utf-8").write(output)
-
-    def reset_tab(self, _):
-        self.msl.web.reset_tab()
 
     def parse_args(self, raw_args):
         main_parser = argparse.ArgumentParser()
@@ -509,9 +522,9 @@ def main():
 
     # If arguments were given - execute command. Otherwise - enter interactive mode.
     if program_args:
-        MSLParser(EmptyWebControl()).execute(program_args)
+        MSLParser(WebControl.factory).execute(program_args)
     else:
-        MSLParser(WebControl()).start()
+        MSLParser(WebControl.factory).start()
 
 
 if __name__ == "__main__":
