@@ -42,14 +42,17 @@ class Tests(object):
         msl_parser.execute("get_status -t k2-t2".split())
         msl_parser.execute("get_status -g kapa1".split())
 
-        msl_parser.execute("save_status -f tests/save_status_test.txt".split())
+        msl_parser.execute("save_status -o tests/save_status_test.txt".split())
 
         # Checking error - Getting status before settings users
         msl.MSLParser(WebControlStub()).execute("get_status".split())
 
+        msl_parser.execute("get_status -f tests/example.html".split())
+
         msl_parser.execute("load_users -f tests/users_invalid_file.yml".split())
 
-        msl_parser.execute("load_users -f users2.yml".split())
+        msl_parser.execute("load_users -f users.yml".split())
+
 
     @staticmethod
     def logic_test():

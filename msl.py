@@ -5,8 +5,10 @@ import yaml
 import traceback
 import functools
 import datetime
+import sys
+import io
 
-USER_REPR_FORMAT = "{:8}{:8}{:20}{:6}{:6}"
+USER_REPR_FORMAT = "{:8}{:8}{:25}{:6}{:6}"
 ZOOM_LOGIN_PAGE_URL = "https://zoom.us/signin"
 ZOOM_MEETING_URL_FORMAT = "https://zoom.us/wc/{}/start"
 REMOVE_FROM_TEXT = ["(Host)", "(Me)", "(Guest)"]
@@ -54,6 +56,25 @@ class WebControl(object):
 
     def get_page_source(self):
         return self.driver.page_source
+
+class EmptyWebControl(object):
+    def open_current(self, url):
+        pass
+
+    def open_new(self, url):
+        pass
+
+    def open_zoom(self, zoom_room_number):
+        pass
+
+    def switch_tab(self, tab_index):
+        pass
+
+    def reset_tab(self):
+        pass
+
+    def get_page_source(self):
+        return ""
 
 
 class Participant(object):
@@ -217,10 +238,11 @@ class UsersData(object):
 
 class UserData(object):
     def __init__(self, name, nicknames, team, group):
-        self.name = name
+        # Remove redundant whitespace
+        self.name = name.strip()
 
-        # Filter empty nicknames
-        self.nicknames = [nickname for nickname in nicknames if nickname]
+        # Filter empty nicknames and strip nicknames
+        self.nicknames = [nickname.strip() for nickname in nicknames if nickname]
         self.team = team
         self.group = group
 
@@ -249,6 +271,8 @@ class User(object):
 
     @property
     def is_online(self):
+        if not self.nicknames:
+            return None
         return bool(self.participants)
 
     def __repr__(self):
@@ -311,10 +335,15 @@ class MSL(object):
         print("Loading users file {}...".format(users_file_path))
         self.users_data = UsersData.from_file(users_file_path)
 
-    def get_status(self, team="", group=""):
+    def get_status(self, team="", group="", input_file_path=""):
+        # Get zoom meeting html.
+        # If file was given - use it. Otherwise - get using browser.
+        if input_file_path:
+            zoom_meeting_html = io.open(input_file_path, encoding="utf-8").read()
+        else:
+            zoom_meeting_html = self.web.get_page_source()
 
-        # Get participant list
-        zoom_meeting_html = self.web.get_page_source()
+        # Get participant list by parsing html.
         participant_list = ParticipantList.from_page_source(zoom_meeting_html)
 
         # Get expected users data.
@@ -333,8 +362,8 @@ class MSL(object):
 
         return user_list
 
-    def save_status(self, output_file_path, team="", group=""):
-        user_list = self.get_status(team=team, group=group)
+    def save_status(self, output_file_path, team="", group="", input_file_path=""):
+        user_list = self.get_status(team=team, group=group, input_file_path=input_file_path)
         open(output_file_path, "w").write(repr(user_list))
 
     @staticmethod
@@ -368,12 +397,14 @@ class MSLParser(object):
         self.msl.safe_invoke(self.msl.load_users, args.file_path)
 
     def get_status(self, args):
-        user_list = self.msl.safe_invoke(self.msl.get_status, team=args.team, group=args.group)
+        user_list = self.msl.safe_invoke(self.msl.get_status, team=args.team, group=args.group,
+                                         input_file_path=args.file_path)
         if user_list:
             print(user_list)
 
     def save_status(self, args):
-        self.msl.safe_invoke(self.msl.save_status, output_file_path=args.file_path, team=args.team, group=args.group)
+        self.msl.safe_invoke(self.msl.save_status, output_file_path=args.output_path, team=args.team, group=args.group,
+                             input_file_path=args.file_path)
 
     def reset_tab(self, _):
         self.msl.safe_invoke(self.msl.web.reset_tab)
@@ -408,12 +439,13 @@ class MSLParser(object):
         get_status_parent_parser = argparse.ArgumentParser(add_help=False)
         get_status_parent_parser.add_argument("-t", "--team")
         get_status_parent_parser.add_argument("-g", "--group")
+        get_status_parent_parser.add_argument("-f", "--file-path")
 
         parser = subparsers.add_parser("get_status", parents=[get_status_parent_parser])
         parser.set_defaults(func=self.get_status)
 
         parser = subparsers.add_parser("save_status", parents=[get_status_parent_parser])
-        parser.add_argument("-f", "--file-path", required=True)
+        parser.add_argument("-o", "--output-path", required=True)
         parser.set_defaults(func=self.save_status)
 
         args = main_parser.parse_args(args=raw_args)
@@ -443,7 +475,13 @@ class MSLParser(object):
 
 
 def main():
-    MSLParser(WebControl()).start()
+    program_args = sys.argv[1:]
+
+    # If arguments were given - execute command. Otherwise - enter interactive mode.
+    if program_args:
+        MSLParser(EmptyWebControl()).execute(program_args)
+    else:
+        MSLParser(WebControl()).start()
 
 
 if __name__ == "__main__":

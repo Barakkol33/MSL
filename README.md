@@ -56,3 +56,8 @@ Commands that allow switching focus on tabs:
 
 ### 7. Exit
 Exit program by terminating it or using the exit command.
+
+## TODO: Add to doc
+- Some room numbers will not work with open_zoom, you can just open the tab in the browser - press link, press "open app"
+  or something like that once and cancel, and then open in browser.
+-
