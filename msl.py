@@ -17,6 +17,8 @@ VIDEO_ON_TEXT = "video on"
 # TODO: Improve code conventions (constants, nameing, docs, etc.).
 # TODO: Remove "participant-list" from participants
 # TODO: If name beta turns out OK - remove other methods.
+# TODO: Remove whitespace and lowercase
+# TODO: Remove users file option from get_status() and instead create StaticWebControl() ?
 
 
 def bool_repr(value):
@@ -30,7 +32,7 @@ def bool_repr(value):
 
 def error_log(message):
     timestamp = datetime.datetime.now()
-    open("errors.txt", "a").write("{} {}".format(timestamp, message))
+    io.open("errors.txt", "a",encoding="utf-8").write("{} {}".format(timestamp, message))
 
 
 class WebControl(object):
@@ -56,6 +58,7 @@ class WebControl(object):
 
     def get_page_source(self):
         return self.driver.page_source
+
 
 class EmptyWebControl(object):
     def open_current(self, url):
@@ -110,6 +113,10 @@ class Participant(object):
     @staticmethod
     def s_compare_name_beta(name1, name2):
         return name1 == name2
+
+    @staticmethod
+    def prepare_name(name):
+        return "".join(name.lower().split())
 
     def compare_name(self, name):
         return self.s_compare_name(self.text, name)
@@ -185,8 +192,10 @@ class ParticipantList(object):
 
 
 class UsersData(object):
-    def __init__(self, users_data):
+    def __init__(self, users_data, teams, groups):
         self.items = users_data
+        self.teams = teams
+        self.groups = groups
         self._validate_users_data(self.items)
 
     def get_by_team(self, team):
@@ -218,12 +227,16 @@ class UsersData(object):
 
     @classmethod
     def from_file(cls, file_path):
-        content = open(file_path).read()
+        content = io.open(file_path, encoding="utf-8").read()
         data = yaml.load(content, Loader=yaml.FullLoader)
 
         users_data = []
+        teams = []
+        groups = []
         for group, group_data in data.items():
+            groups.append(group)
             for team, team_data in group_data.items():
+                teams.append(team)
                 for user_data in team_data:
                     # Filter users with no names
                     if not user_data["name"]:
@@ -233,7 +246,7 @@ class UsersData(object):
                                                team=team,
                                                group=group))
 
-        return cls(users_data)
+        return cls(users_data, teams, groups)
 
 
 class UserData(object):
@@ -286,8 +299,9 @@ class UserList(object):
     SORT_BY_STATUS = "status"
     SORT_BY_DEFAULT = SORT_BY_STATUS
 
-    def __init__(self, users):
+    def __init__(self, users, teams):
         self.items = users
+        self.teams = teams
         self.sort()
 
     def sort(self):
@@ -298,8 +312,9 @@ class UserList(object):
         self.items = sorted(self.items, key=sort_key_method)
 
     @classmethod
-    def from_data(cls, expected_users_data, participant_list):
+    def from_data(cls, expected_users_data, participant_list, teams):
         users = []
+
         for user_data in expected_users_data:
             existing_participants = []
 
@@ -312,14 +327,38 @@ class UserList(object):
 
             users.append(User.from_data(user_data, existing_participants))
 
-        return cls(users)
+        return cls(users, teams)
+
+    def get_msls(self):
+        msls = []
+        for team in self.teams:
+            team_users = [user for user in self.items if user.team == team]
+            msl = TeamMSL(team, team_users)
+            msls.append(msl)
+
+        return msls
 
     def __repr__(self):
         header = USER_REPR_FORMAT.format("Group", "Team", "Name", "Here?", "Vid?")
         return "Users:\n{}".format("\n".join([header] + [repr(user) for user in self.items]))
 
 
-class MSL(object):
+class TeamMSL(object):
+    def __init__(self, team, users):
+        self.team = team
+        self.users = users
+
+    def __repr__(self):
+        total_amount = len(self.users)
+        team_missing = [user for user in self.users if not user.is_online]
+        output = "Team: {} | Normal: {} | Current: {} | Description: {}".format(self.team,
+                                                                                     len(self.users),
+                                                                                     total_amount - len(team_missing),
+                                                                                     ", ".join([user.name for user in team_missing]))
+        return output
+
+
+class MSLManager(object):
     DEFAULT_USERS_FILE_PATH = "users.yml"
 
     def __init__(self, web):
@@ -335,11 +374,15 @@ class MSL(object):
         print("Loading users file {}...".format(users_file_path))
         self.users_data = UsersData.from_file(users_file_path)
 
-    def get_status(self, team="", group="", input_file_path=""):
+    def get_status(self, team="", group="", html_file_path="", users_file_path=""):
+        # If users file was given - load it.
+        if users_file_path:
+            self.load_users(users_file_path)
+
         # Get zoom meeting html.
-        # If file was given - use it. Otherwise - get using browser.
-        if input_file_path:
-            zoom_meeting_html = io.open(input_file_path, encoding="utf-8").read()
+        # If html file was given - use it. Otherwise - get using browser.
+        if html_file_path:
+            zoom_meeting_html = io.open(html_file_path, encoding="utf-8").read()
         else:
             zoom_meeting_html = self.web.get_page_source()
 
@@ -352,19 +395,23 @@ class MSL(object):
 
         if team:
             expected_users_data = self.users_data.get_by_team(team)
+            expected_teams = [team]
         elif group:
+            # group == {'A', 'B', 'C'}, team = {'A1', 'A2', 'B1', 'B2'...}
             expected_users_data = self.users_data.get_by_group(group)
+            expected_teams = [team for team in self.users_data.teams if group == team[0]]
         else:
             expected_users_data = self.users_data.get_all()
+            expected_teams = self.users_data.teams
 
         # Get user list
-        user_list = UserList.from_data(expected_users_data, participant_list)
+        user_list = UserList.from_data(expected_users_data=expected_users_data,
+                                       participant_list=participant_list,
+                                       teams=expected_teams)
 
-        return user_list
+        msls = user_list.get_msls()
 
-    def save_status(self, output_file_path, team="", group="", input_file_path=""):
-        user_list = self.get_status(team=team, group=group, input_file_path=input_file_path)
-        open(output_file_path, "w").write(repr(user_list))
+        return msls
 
     @staticmethod
     def safe_invoke(func, *args, **kwargs):
@@ -381,7 +428,7 @@ class MSL(object):
 
 class MSLParser(object):
     def __init__(self, web):
-        self.msl = MSL(web)
+        self.msl = MSLManager(web)
 
     def open_new(self, args):
         print("Opening url {}...".format(args.url))
@@ -397,14 +444,19 @@ class MSLParser(object):
         self.msl.safe_invoke(self.msl.load_users, args.file_path)
 
     def get_status(self, args):
-        user_list = self.msl.safe_invoke(self.msl.get_status, team=args.team, group=args.group,
-                                         input_file_path=args.file_path)
-        if user_list:
-            print(user_list)
+        msls = self.msl.safe_invoke(self.msl.get_status,
+                                    team=args.team,
+                                    group=args.group,
+                                    html_file_path=args.html_file_path,
+                                    users_file_path=args.users_file_path)
 
-    def save_status(self, args):
-        self.msl.safe_invoke(self.msl.save_status, output_file_path=args.output_path, team=args.team, group=args.group,
-                             input_file_path=args.file_path)
+        output = "\n".join([repr(msl) for msl in msls])
+
+        if output:
+            print(output)
+            # If output file path was given - save output to it.
+            if args.output_file_path:
+                io.open(args.output_file_path, "w", encoding="utf-8").write(output)
 
     def reset_tab(self, _):
         self.msl.safe_invoke(self.msl.web.reset_tab)
@@ -439,16 +491,14 @@ class MSLParser(object):
         get_status_parent_parser = argparse.ArgumentParser(add_help=False)
         get_status_parent_parser.add_argument("-t", "--team")
         get_status_parent_parser.add_argument("-g", "--group")
-        get_status_parent_parser.add_argument("-f", "--file-path")
+        get_status_parent_parser.add_argument("-m", "--html-file-path")
+        get_status_parent_parser.add_argument("-u", "--users-file-path")
+        get_status_parent_parser.add_argument("-o", "--output-file-path")
 
         parser = subparsers.add_parser("get_status", parents=[get_status_parent_parser])
         parser.set_defaults(func=self.get_status)
 
-        parser = subparsers.add_parser("save_status", parents=[get_status_parent_parser])
-        parser.add_argument("-o", "--output-path", required=True)
-        parser.set_defaults(func=self.save_status)
-
-        args = main_parser.parse_args(args=raw_args)
+        args = main_parser.parse_args(raw_args)
 
         return args
 
@@ -460,7 +510,6 @@ class MSLParser(object):
     def start(self):
         user_input = ""
         while user_input != "exit":
-            # TODO: Maybe don't except KeyboardInterrupt?
             if user_input:
                 try:
                     self.execute(user_input.split())

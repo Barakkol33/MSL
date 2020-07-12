@@ -33,25 +33,25 @@ class Tests(object):
         msl_parser.execute("open_zoom -r 12345".split())
 
         msl_parser.execute("load_users -f tests/users.yml".split())
+        msl_parser.execute("load_users -f tests/users_invalid_file.yml".split())
+        msl_parser.execute("load_users -f users.yml".split())
 
         msl_parser.execute("switch_tab -i 12345".split())
 
         msl_parser.execute("reset_tab".split())
 
-        msl_parser.execute("get_status".split())
-        msl_parser.execute("get_status -t k2-t2".split())
-        msl_parser.execute("get_status -g kapa1".split())
-
-        msl_parser.execute("save_status -o tests/save_status_test.txt".split())
-
+        msl_parser.execute("get_status -u tests/users.yml".split())
+        msl_parser.execute("get_status -u tests/users.yml -t k2-t2".split())
+        msl_parser.execute("get_status -u tests/users.yml -g kapa1".split())
+        msl_parser.execute("get_status -u tests/users.yml -o tests/save_status_test.txt".split())
         # Checking error - Getting status before settings users
         msl.MSLParser(WebControlStub()).execute("get_status".split())
+        msl_parser.execute("get_status -u tests/users.yml -m tests/example.html".split())
 
-        msl_parser.execute("get_status -f tests/example.html".split())
-
-        msl_parser.execute("load_users -f tests/users_invalid_file.yml".split())
-
-        msl_parser.execute("load_users -f users.yml".split())
+    @staticmethod
+    def try1():
+        msl_parser = msl.MSLParser(WebControlStub())
+        msl_parser.execute("get_status -g kapa2 -u users.yml -m course2.html".split())
 
 
     @staticmethod
@@ -63,7 +63,8 @@ class Tests(object):
 
 
 def main():
-    Tests.commands_tests()
+    #Tests.commands_tests()
+    Tests.try1()
 
 
 if __name__ == "__main__":
