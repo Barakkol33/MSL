@@ -15,11 +15,6 @@ REMOVE_FROM_TEXT = ["(Host)", "(Me)", "(Guest)"]
 VIDEO_ON_TEXT = "video on"
 
 # TODO: Improve code conventions (constants, nameing, docs, etc.).
-# TODO: Remove "participant-list" from participants
-# TODO: If name beta turns out OK - remove other methods.
-# TODO: Remove whitespace and lowercase
-# TODO: Remove users file option from get_status() and instead create StaticWebControl() ?
-
 
 def bool_repr(value):
     if value is None:
@@ -91,7 +86,7 @@ class Participant(object):
             text = text.replace(token, "")
 
         self.text = text
-        self.name_beta = self.text.split("  ")[0]
+        self.name = self.text.split("  ")[0]
         self.is_video_on = is_video_on
 
     @classmethod
@@ -100,29 +95,19 @@ class Participant(object):
         return cls(text, is_video_on)
 
     @staticmethod
-    def s_compare_name(text, name):
-        """
-        Checking if the user's text starts with the words of name (like .startswith() but with words).
-        compare_name(text="hello world today ...", "hello world") == True
-        compare_name(text="hello world ...", "hello wor") == False
-        """
-        words_in_name = name.count(" ") + 1
-        name_from_text = " ".join(text.split(" ")[:words_in_name])
-        return name == name_from_text
+    def _prepare_name(name):
+        # Remove whitespace and make lowercase
+        name = "".join(name.split())
+        name = name.lower()
 
-    @staticmethod
-    def s_compare_name_beta(name1, name2):
-        return name1 == name2
+        return name
 
-    @staticmethod
-    def prepare_name(name):
-        return "".join(name.lower().split())
+    @classmethod
+    def s_compare_name(cls, name1, name2):
+        return cls._prepare_name(name1) == cls._prepare_name(name2)
 
     def compare_name(self, name):
-        return self.s_compare_name(self.text, name)
-
-    def compare_name_beta(self, name):
-        return self.name_beta == name
+        return self.s_compare_name(self.name, name)
 
     def __repr__(self):
         return "Participant('{}')".format(self.text)
@@ -141,7 +126,11 @@ class ParticipantList(object):
     def from_page_source(cls, page_source):
         # TODO: What happens if the page is not a zoom meeting page, or the Participants tab is not shown?
         # Get relevant line.
-        participants_line = [line for line in page_source.split("\n") if cls.USERS_LINE_IDENTIFIER in line][0]
+        participants_line_filter = [line for line in page_source.split("\n") if cls.USERS_LINE_IDENTIFIER in line]
+        if not participants_line_filter:
+            raise RuntimeError("Participants not found in page!\nCheck that the focus is on correct tab and the "
+                               "you can see all the participants in the page")
+        participants_line = participants_line_filter[0]
 
         # Remove unnecessary beginning
         text = participants_line[participants_line.index(cls.START_MARK):]
@@ -217,13 +206,10 @@ class UsersData(object):
         nicknames = [user_data.nicknames for user_data in users_data]
         nicknames = functools.reduce(lambda x, y: x + y, nicknames)
 
-        # Because the check is not commutative, all names are scanned twice.
         for i in range(len(nicknames)):
-            for j in range(len(nicknames)):
-                if i == j:
-                    continue
-                if Participant.s_compare_name_beta(nicknames[i], nicknames[j]):
-                    raise ValueError("Found two clashing nicknames {} and {}".format(nicknames[i], nicknames[j]))
+            for j in range(i + 1, len(nicknames)):
+                if Participant.s_compare_name(nicknames[i], nicknames[j]):
+                    raise ValueError("Found two clashing nicknames: {}".format(nicknames[i]))
 
     @classmethod
     def from_file(cls, file_path):
@@ -321,7 +307,7 @@ class UserList(object):
             # Get all existing participants of user
             for nickname in user_data.nicknames:
                 for participant in participant_list.items:
-                    if participant.compare_name_beta(nickname):
+                    if participant.compare_name(nickname):
                         existing_participants.append(participant)
                         # Don't break here - someone might have a few profiles with the same names.
 
@@ -359,26 +345,16 @@ class TeamMSL(object):
 
 
 class MSLManager(object):
-    DEFAULT_USERS_FILE_PATH = "users.yml"
-
     def __init__(self, web):
         self.web = web
 
         self.users_data = None
 
-        # If default configuration exists - use it.
-        if os.path.exists(self.DEFAULT_USERS_FILE_PATH):
-            self.load_users(self.DEFAULT_USERS_FILE_PATH)
-
     def load_users(self, users_file_path):
         print("Loading users file {}...".format(users_file_path))
         self.users_data = UsersData.from_file(users_file_path)
 
-    def get_status(self, team="", group="", html_file_path="", users_file_path=""):
-        # If users file was given - load it.
-        if users_file_path:
-            self.load_users(users_file_path)
-
+    def get_status(self, team="", group="", html_file_path="", users_file_path="", use_default=True):
         # Get zoom meeting html.
         # If html file was given - use it. Otherwise - get using browser.
         if html_file_path:
@@ -389,7 +365,11 @@ class MSLManager(object):
         # Get participant list by parsing html.
         participant_list = ParticipantList.from_page_source(zoom_meeting_html)
 
-        # Get expected users data.
+        # Get expected users data (Who are we focusing on now?).
+        # If users file was given - load it.
+        if users_file_path:
+            self.load_users(users_file_path)
+
         if not self.users_data:
             raise RuntimeError("Users not set!")
 
@@ -432,23 +412,22 @@ class MSLParser(object):
 
     def open_new(self, args):
         print("Opening url {}...".format(args.url))
-        self.msl.safe_invoke(self.msl.web.open_new, args.url)
+        self.msl.web.open_new(args.url)
 
     def open_zoom(self, args):
-        self.msl.safe_invoke(self.msl.web.open_zoom, args.room)
+        self.msl.web.open_zoom(args.room)
 
     def switch_tab(self, args):
-        self.msl.safe_invoke(self.msl.web.switch_tab, args.tab_index)
+        self.msl.web.switch_tab(args.tab_index)
 
     def load_users(self, args):
-        self.msl.safe_invoke(self.msl.load_users, args.file_path)
+        self.msl.load_users(args.file_path)
 
     def get_status(self, args):
-        msls = self.msl.safe_invoke(self.msl.get_status,
-                                    team=args.team,
-                                    group=args.group,
-                                    html_file_path=args.html_file_path,
-                                    users_file_path=args.users_file_path)
+        msls = self.msl.get_status(team=args.team,
+                                   group=args.group,
+                                   html_file_path=args.html_file_path,
+                                   users_file_path=args.users_file_path)
 
         output = "\n".join([repr(msl) for msl in msls])
 
@@ -459,7 +438,7 @@ class MSLParser(object):
                 io.open(args.output_file_path, "w", encoding="utf-8").write(output)
 
     def reset_tab(self, _):
-        self.msl.safe_invoke(self.msl.web.reset_tab)
+        self.msl.web.reset_tab()
 
     def parse_args(self, raw_args):
         main_parser = argparse.ArgumentParser()
@@ -507,19 +486,21 @@ class MSLParser(object):
         args.func(args)
         print("Done!")
 
+    def safe_execute(self, raw_args):
+        try:
+            self.execute(raw_args)
+        except (Exception, SystemExit) as e:
+            if isinstance(e, KeyboardInterrupt):
+                print("Keyboard interrupt!")
+                raise KeyboardInterrupt()
+            else:
+                traceback.print_exc()
+
     def start(self):
         user_input = ""
         while user_input != "exit":
             if user_input:
-                try:
-                    self.execute(user_input.split())
-                except (Exception, SystemExit) as e:
-                    if isinstance(e, KeyboardInterrupt):
-                        print("Keyboard interrupt!")
-                        break
-                    else:
-                        traceback.print_exc()
-
+                self.safe_execute(user_input.split())
             user_input = input("==> ")
 
 

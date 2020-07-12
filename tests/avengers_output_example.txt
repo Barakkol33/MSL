@@ -1,0 +1,4 @@
+Team: A1 | Normal: 2 | Current: 2 | Description: 
+Team: A2 | Normal: 3 | Current: 2 | Description: Bruce Banner
+Team: B1 | Normal: 2 | Current: 2 | Description: 
+Team: B2 | Normal: 2 | Current: 1 | Description: Peter Parker
