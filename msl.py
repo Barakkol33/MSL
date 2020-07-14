@@ -340,11 +340,11 @@ class TeamMSL(object):
     def __repr__(self):
         total_amount = len(self.users)
         team_missing = [user for user in self.users if not user.is_online]
-        repr_format = "Team: {} | Normal: {} | Current: {} | Description: {}"
+        repr_format = "*Team {}*\nNormal: {}\nCurrent: {}\nDescription:\n{}\n\n"
         output = repr_format.format(self.team,
                                     len(self.users),
                                     total_amount - len(team_missing),
-                                    ", ".join([user.name for user in team_missing]))
+                                    "\n".join(["- " + user.name for user in team_missing]))
         return output
 
 
