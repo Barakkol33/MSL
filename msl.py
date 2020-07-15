@@ -14,7 +14,6 @@ ZOOM_MEETING_URL_FORMAT = "https://zoom.us/wc/{}/start"
 REMOVE_FROM_TEXT = ["(Host)", "(Me)", "(Guest)"]
 VIDEO_ON_TEXT = "video on"
 
-# TODO: Make get_status() receive either WebControl or static
 # TODO: Improve code conventions (constants, nameing, docs, etc.).
 
 
@@ -445,7 +444,8 @@ class MSLParser(object):
                                            html_source=html_source,
                                            users_file_path=args.users_file_path)
 
-        output = "\n".join([repr(msl) for msl in msls])
+        output = "\n".join([repr(msl) for msl in msls])        
+
 
         if output:
             print(output)
