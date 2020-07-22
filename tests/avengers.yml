@@ -1,0 +1,24 @@
+A:
+  A1:
+    - name: Steve Rogers
+      nicknames: ["Captain America"]
+    - name: Tony Stark
+      nicknames: ["Iron Man", "IM-Video"]
+  A2:
+    - name: Thor Odinson
+      nicknames: ["Thor"]
+    - name: Bruce Banner
+      nicknames: ["Hulk"]
+    - name: Hank Pym
+      nicknames: ["Ant Man"]
+B:
+  B1:
+    - name: T'Challa
+      nicknames: ["Black Panther"]
+    - name: Samuel Wilson
+      nicknames: ["Falcon"]
+  B2:
+    - name: Thanos
+      nicknames: ["Thanos"]
+    - name: Peter Parker
+      nicknames: ["Spider Man"]

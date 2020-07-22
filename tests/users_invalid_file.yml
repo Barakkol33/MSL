@@ -1,0 +1,6 @@
+kapa1:
+  k1-t1:
+    - name: Steve Rogers
+      nicknames: ["Captain"]
+    - name: Tony Stark
+      nicknames: ["Captain"]
